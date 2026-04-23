@@ -11,4 +11,8 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "pytest>=8.4.2",
     "uvicorn>=0.38.0",
+    "code-review-graph",
 ]
+
+[tool.uv.sources]
+code-review-graph = { path = "../../code-review-graph-main", editable = true }

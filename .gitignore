@@ -10,4 +10,7 @@ wheels/
 .venv
 .env
 .github
+.claude
 zHelper_Stuff
+# Added by code-review-graph
+.code-review-graph/
