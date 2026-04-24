@@ -133,3 +133,72 @@ async def test_get_epic_images_success() -> None:
         payload = await client.get_epic_images()
 
     assert payload == [{"identifier": "epic-id"}]
+
+
+@pytest.mark.anyio
+async def test_retries_timeout_then_succeeds() -> None:
+    settings = Settings(
+        nasa_api_key="test-key",
+        http_retry_attempts=3,
+        http_retry_backoff_seconds=0.0,
+    )
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise httpx.TimeoutException("timeout")
+        return httpx.Response(status_code=200, json={"events": [{"id": "ok"}]}, request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = NasaClient(settings=settings, client=http_client)
+        payload = await client.get_eonet_events()
+
+    assert calls["count"] == 2
+    assert payload == {"events": [{"id": "ok"}]}
+
+
+@pytest.mark.anyio
+async def test_retries_503_then_succeeds() -> None:
+    settings = Settings(
+        nasa_api_key="test-key",
+        http_retry_attempts=3,
+        http_retry_backoff_seconds=0.0,
+    )
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(status_code=503, json={"error": "temp"}, request=request)
+        return httpx.Response(status_code=200, json={"events": [{"id": "ok"}]}, request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = NasaClient(settings=settings, client=http_client)
+        payload = await client.get_eonet_events()
+
+    assert calls["count"] == 2
+    assert payload == {"events": [{"id": "ok"}]}
+
+
+@pytest.mark.anyio
+async def test_does_not_retry_on_404() -> None:
+    settings = Settings(
+        nasa_api_key="test-key",
+        http_retry_attempts=3,
+        http_retry_backoff_seconds=0.0,
+    )
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(status_code=404, json={"error": "not found"}, request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = NasaClient(settings=settings, client=http_client)
+        with pytest.raises(HTTPException) as exc_info:
+            await client.get_eonet_events()
+
+    assert calls["count"] == 1
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == "Upstream NASA service returned an error"
