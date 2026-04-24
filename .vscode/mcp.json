@@ -1,10 +1,10 @@
 {
   "servers": {
     "code-review-graph": {
-      "command": "uvx",
+      "command": "sh",
       "args": [
-        "code-review-graph",
-        "serve"
+        "-c",
+        "export SSL_CERT_FILE='/Users/hitesh.modi/Desktop/Kinda Personal/Backend Projects/caadmin.netskope.com.pem' && uvx code-review-graph serve"
       ],
       "type": "stdio"
     }

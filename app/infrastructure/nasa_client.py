@@ -68,3 +68,17 @@ class NasaClient:
 		if isinstance(payload, dict):
 			return payload
 		return {}
+
+	async def get_asteroids_feed(self, api_key: str | None = None) -> dict[str, Any]:
+		url = f"{self._settings.nasa_api_base_url}/neo/rest/v1/feed"
+		payload = await self._get_json(url, {"api_key": self._resolve_api_key(api_key)})
+		if isinstance(payload, dict):
+			return payload
+		return {}
+
+	async def get_epic_images(self, api_key: str | None = None) -> list[dict[str, Any]]:
+		url = f"{self._settings.nasa_api_base_url}/EPIC/api/natural"
+		payload = await self._get_json(url, {"api_key": self._resolve_api_key(api_key)})
+		if isinstance(payload, list):
+			return payload
+		return []

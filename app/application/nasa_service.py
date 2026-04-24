@@ -1,11 +1,37 @@
 from typing import Any
+from datetime import UTC, date, datetime
+from collections.abc import Awaitable, Callable
+from typing import Protocol
 
-from app.infrastructure.nasa_client import NasaClient
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.models.daily_api_cache import DailyApiCache
+
+
+class NasaClientProtocol(Protocol):
+	async def get_donki_notifications(self, api_key: str | None = None) -> list[dict[str, Any]]: ...
+
+	async def get_eonet_events(self, api_key: str | None = None) -> dict[str, Any]: ...
+
+	async def get_insight_weather(self, api_key: str | None = None) -> dict[str, Any]: ...
+
+	async def get_asteroids_feed(self, api_key: str | None = None) -> dict[str, Any]: ...
+
+	async def get_epic_images(self, api_key: str | None = None) -> list[dict[str, Any]]: ...
 
 
 class NasaService:
-	def __init__(self, client: NasaClient) -> None:
+	def __init__(
+		self,
+		client: NasaClientProtocol,
+		db_session: Session,
+		today_provider: Callable[[], date] | None = None,
+	) -> None:
 		self._client = client
+		self._db_session = db_session
+		self._today_provider = today_provider or (lambda: datetime.now(UTC).date())
 
 	async def fetch_donki_notifications(self, api_key: str | None = None) -> list[dict[str, Any]]:
 		return await self._client.get_donki_notifications(api_key=api_key)
@@ -15,3 +41,50 @@ class NasaService:
 
 	async def fetch_insight_weather(self, api_key: str | None = None) -> dict[str, Any]:
 		return await self._client.get_insight_weather(api_key=api_key)
+
+	async def fetch_asteroids_feed(self, api_key: str | None = None) -> dict[str, Any]:
+		data, cached, cache_date = await self._get_or_set_daily_cache(
+			endpoint="asteroids_neows",
+			fetcher=lambda: self._client.get_asteroids_feed(api_key=api_key),
+		)
+		return {"data": data, "cached": cached, "cache_date": cache_date.isoformat()}
+
+	async def fetch_epic_images(self, api_key: str | None = None) -> dict[str, Any]:
+		data, cached, cache_date = await self._get_or_set_daily_cache(
+			endpoint="epic_natural",
+			fetcher=lambda: self._client.get_epic_images(api_key=api_key),
+		)
+		return {"data": data, "cached": cached, "cache_date": cache_date.isoformat()}
+
+	async def _get_or_set_daily_cache(
+		self,
+		endpoint: str,
+		fetcher: Callable[[], Awaitable[Any]],
+	) -> tuple[Any, bool, date]:
+		today = self._today_provider()
+		existing = self._db_session.execute(
+			select(DailyApiCache).where(
+				DailyApiCache.endpoint == endpoint,
+				DailyApiCache.cache_date == today,
+			)
+		).scalar_one_or_none()
+		if existing is not None:
+			return existing.payload, True, today
+
+		payload = await fetcher()
+		self._db_session.add(DailyApiCache(endpoint=endpoint, cache_date=today, payload=payload))
+		try:
+			self._db_session.commit()
+		except IntegrityError:
+			self._db_session.rollback()
+			existing_after_race = self._db_session.execute(
+				select(DailyApiCache).where(
+					DailyApiCache.endpoint == endpoint,
+					DailyApiCache.cache_date == today,
+				)
+			).scalar_one_or_none()
+			if existing_after_race is not None:
+				return existing_after_race.payload, True, today
+			raise
+
+		return payload, False, today

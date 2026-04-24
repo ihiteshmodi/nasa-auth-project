@@ -4,6 +4,7 @@ import httpx
 from fastapi import FastAPI
 
 from app.infrastructure.config import settings
+from app.infrastructure.db import SessionLocal
 from app.interfaces.api.nasa import router as nasa_router
 
 
@@ -12,6 +13,7 @@ async def lifespan(app: FastAPI):
 	async with httpx.AsyncClient() as http_client:
 		app.state.http_client = http_client
 		app.state.settings = settings
+		app.state.db_session_factory = SessionLocal
 		yield
 
 

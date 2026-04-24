@@ -102,3 +102,34 @@ async def test_missing_api_key_returns_400() -> None:
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "NASA API key is required. Provide query param 'api_key' or set NASA_API_KEY."
+
+
+@pytest.mark.anyio
+async def test_get_asteroids_feed_success() -> None:
+    settings = Settings(nasa_api_key="test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/neo/rest/v1/feed"
+        assert request.url.params["api_key"] == "test-key"
+        return httpx.Response(status_code=200, json={"near_earth_objects": {}}, request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = NasaClient(settings=settings, client=http_client)
+        payload = await client.get_asteroids_feed()
+
+    assert payload == {"near_earth_objects": {}}
+
+
+@pytest.mark.anyio
+async def test_get_epic_images_success() -> None:
+    settings = Settings(nasa_api_key="test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/EPIC/api/natural"
+        return httpx.Response(status_code=200, json=[{"identifier": "epic-id"}], request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = NasaClient(settings=settings, client=http_client)
+        payload = await client.get_epic_images()
+
+    assert payload == [{"identifier": "epic-id"}]
