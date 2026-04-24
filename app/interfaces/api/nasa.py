@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from app.application.nasa_service import NasaService
+from app.interfaces.dependencies.auth import require_cached_api_user, require_premium_user
 from app.interfaces.dependencies.nasa import get_nasa_service
 from app.interfaces.schemas.nasa import (
 	NasaCachedListResponse,
@@ -10,14 +11,13 @@ from app.interfaces.schemas.nasa import (
 	NasaListResponse,
 	NasaObjectResponse,
 )
+from app.interfaces.schemas.user import UserPrincipal
 
 router = APIRouter(prefix="/api/v1/nasa", tags=["nasa"])
 
 
 def _resolve_api_key_for_request(request: Request, api_key: str | None) -> str | None:
-	referer = request.headers.get("referer", "")
-	is_docs_request = "/docs" in referer
-	if is_docs_request and not api_key:
+	if not api_key:
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail="query param 'api_key' is required.",
@@ -36,6 +36,7 @@ def _set_cache_headers(response: Response, *, status_value: str, source_value: s
 async def get_donki_notifications(
 	request: Request,
 	response: Response,
+	_current_user: Annotated[UserPrincipal, Depends(require_premium_user)],
 	service: Annotated[NasaService, Depends(get_nasa_service)],
 	api_key: str | None = Query(
 		default=None,
@@ -54,6 +55,7 @@ async def get_donki_notifications(
 async def get_eonet_events(
 	request: Request,
 	response: Response,
+	_current_user: Annotated[UserPrincipal, Depends(require_premium_user)],
 	service: Annotated[NasaService, Depends(get_nasa_service)],
 	api_key: str | None = Query(
 		default=None,
@@ -72,6 +74,7 @@ async def get_eonet_events(
 async def get_insight_weather(
 	request: Request,
 	response: Response,
+	_current_user: Annotated[UserPrincipal, Depends(require_premium_user)],
 	service: Annotated[NasaService, Depends(get_nasa_service)],
 	api_key: str | None = Query(
 		default=None,
@@ -90,6 +93,7 @@ async def get_insight_weather(
 async def get_asteroids_feed(
 	request: Request,
 	response: Response,
+	_current_user: Annotated[UserPrincipal, Depends(require_cached_api_user)],
 	service: Annotated[NasaService, Depends(get_nasa_service)],
 	api_key: str | None = Query(
 		default=None,
@@ -120,6 +124,7 @@ async def get_asteroids_feed(
 async def get_epic_natural(
 	request: Request,
 	response: Response,
+	_current_user: Annotated[UserPrincipal, Depends(require_cached_api_user)],
 	service: Annotated[NasaService, Depends(get_nasa_service)],
 	api_key: str | None = Query(
 		default=None,

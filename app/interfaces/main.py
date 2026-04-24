@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.infrastructure.config import settings
 from app.infrastructure.db import SessionLocal
+from app.interfaces.api.auth import router as auth_router
 from app.interfaces.api.nasa import router as nasa_router
 
 
@@ -29,6 +30,7 @@ def create_app() -> FastAPI:
 		return {"status": "ok"}
 
 	app.include_router(nasa_router)
+	app.include_router(auth_router)
 	return app
 
 

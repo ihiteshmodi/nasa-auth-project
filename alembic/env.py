@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from app.infrastructure.config import settings
 from app.infrastructure.db import Base
 from app.models.daily_api_cache import DailyApiCache  # noqa: F401
+from app.models.user import AuthUser  # noqa: F401
 
 config = context.config
 

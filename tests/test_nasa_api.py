@@ -1,9 +1,10 @@
 from fastapi.testclient import TestClient
 
 from app.application.nasa_service import NasaService
-from app.infrastructure.config import settings
+from app.interfaces.dependencies.auth import require_cached_api_user, require_premium_user
 from app.interfaces.dependencies.nasa import get_nasa_service
 from app.interfaces.main import create_app
+from app.interfaces.schemas.user import UserPrincipal
 
 
 class FakeNasaService(NasaService):
@@ -34,6 +35,11 @@ class FakeNasaService(NasaService):
         }
 
 
+def _add_auth_overrides(app) -> None:
+    app.dependency_overrides[require_premium_user] = lambda: UserPrincipal(username="premium_user", scope="premium")
+    app.dependency_overrides[require_cached_api_user] = lambda: UserPrincipal(username="basic_user", scope="basic")
+
+
 def test_health_endpoint() -> None:
     app = create_app()
     with TestClient(app) as client:
@@ -46,11 +52,12 @@ def test_health_endpoint() -> None:
 def test_nasa_endpoints_return_nocache_payloads() -> None:
     app = create_app()
     app.dependency_overrides[get_nasa_service] = lambda: FakeNasaService()
+    _add_auth_overrides(app)
 
     with TestClient(app) as client:
-        donki_response = client.get("/api/v1/nasa/donki/notifications")
-        eonet_response = client.get("/api/v1/nasa/eonet/events")
-        insight_response = client.get("/api/v1/nasa/insight/weather")
+        donki_response = client.get("/api/v1/nasa/donki/notifications", params={"api_key": "DEMO_KEY"})
+        eonet_response = client.get("/api/v1/nasa/eonet/events", params={"api_key": "DEMO_KEY"})
+        insight_response = client.get("/api/v1/nasa/insight/weather", params={"api_key": "DEMO_KEY"})
 
     assert donki_response.status_code == 200
     assert donki_response.headers["Cache-Control"] == "no-store"
@@ -86,10 +93,11 @@ def test_nasa_endpoints_return_nocache_payloads() -> None:
 def test_nasa_cached_endpoints_return_cached_metadata() -> None:
     app = create_app()
     app.dependency_overrides[get_nasa_service] = lambda: FakeNasaService()
+    _add_auth_overrides(app)
 
     with TestClient(app) as client:
-        asteroids_response = client.get("/api/v1/nasa/asteroids/feed")
-        epic_response = client.get("/api/v1/nasa/epic/natural")
+        asteroids_response = client.get("/api/v1/nasa/asteroids/feed", params={"api_key": "DEMO_KEY"})
+        epic_response = client.get("/api/v1/nasa/epic/natural", params={"api_key": "DEMO_KEY"})
 
     assert asteroids_response.status_code == 200
     assert asteroids_response.headers["X-Cache-Status"] == "HIT"
@@ -119,6 +127,7 @@ def test_nasa_cached_endpoints_return_cached_metadata() -> None:
 def test_docs_request_requires_query_api_key() -> None:
     app = create_app()
     app.dependency_overrides[get_nasa_service] = lambda: FakeNasaService()
+    _add_auth_overrides(app)
 
     with TestClient(app) as client:
         response = client.get(
@@ -133,6 +142,7 @@ def test_docs_request_requires_query_api_key() -> None:
 def test_docs_request_with_query_api_key_succeeds() -> None:
     app = create_app()
     app.dependency_overrides[get_nasa_service] = lambda: FakeNasaService()
+    _add_auth_overrides(app)
 
     with TestClient(app) as client:
         response = client.get(
@@ -151,16 +161,9 @@ def test_docs_request_with_query_api_key_succeeds() -> None:
 
 def test_nasa_api_returns_400_when_api_key_missing() -> None:
     app = create_app()
-    original_key = settings.nasa_api_key
-    settings.nasa_api_key = ""
-
-    try:
-        with TestClient(app) as client:
-            response = client.get("/api/v1/nasa/eonet/events")
-    finally:
-        settings.nasa_api_key = original_key
+    _add_auth_overrides(app)
+    with TestClient(app) as client:
+        response = client.get("/api/v1/nasa/eonet/events")
 
     assert response.status_code == 400
-    assert response.json() == {
-        "detail": "NASA API key is required. Provide query param 'api_key' or set NASA_API_KEY."
-    }
+    assert response.json() == {"detail": "query param 'api_key' is required."}
