@@ -1,4 +1,5 @@
 import httpx
+import logging
 import pytest
 from fastapi import HTTPException
 
@@ -136,7 +137,7 @@ async def test_get_epic_images_success() -> None:
 
 
 @pytest.mark.anyio
-async def test_retries_timeout_then_succeeds() -> None:
+async def test_retries_timeout_then_succeeds(caplog) -> None:
     settings = Settings(
         nasa_api_key="test-key",
         http_retry_attempts=3,
@@ -150,12 +151,16 @@ async def test_retries_timeout_then_succeeds() -> None:
             raise httpx.TimeoutException("timeout")
         return httpx.Response(status_code=200, json={"events": [{"id": "ok"}]}, request=request)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
-        client = NasaClient(settings=settings, client=http_client)
-        payload = await client.get_eonet_events()
+    with caplog.at_level(logging.WARNING):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            client = NasaClient(settings=settings, client=http_client)
+            payload = await client.get_eonet_events()
 
     assert calls["count"] == 2
     assert payload == {"events": [{"id": "ok"}]}
+    retry_records = [record for record in caplog.records if record.msg == "retry_scheduled"]
+    assert retry_records
+    assert retry_records[-1].__dict__.get("reason") == "timeout"
 
 
 @pytest.mark.anyio
@@ -182,7 +187,7 @@ async def test_retries_503_then_succeeds() -> None:
 
 
 @pytest.mark.anyio
-async def test_does_not_retry_on_404() -> None:
+async def test_does_not_retry_on_404(caplog) -> None:
     settings = Settings(
         nasa_api_key="test-key",
         http_retry_attempts=3,
@@ -194,11 +199,16 @@ async def test_does_not_retry_on_404() -> None:
         calls["count"] += 1
         return httpx.Response(status_code=404, json={"error": "not found"}, request=request)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
-        client = NasaClient(settings=settings, client=http_client)
-        with pytest.raises(HTTPException) as exc_info:
-            await client.get_eonet_events()
+    with caplog.at_level(logging.WARNING):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            client = NasaClient(settings=settings, client=http_client)
+            with pytest.raises(HTTPException) as exc_info:
+                await client.get_eonet_events()
 
     assert calls["count"] == 1
     assert exc_info.value.status_code == 502
     assert exc_info.value.detail == "Upstream NASA service returned an error"
+    assert not [record for record in caplog.records if record.msg == "retry_scheduled"]
+    upstream_failure_records = [record for record in caplog.records if record.msg == "upstream_failure"]
+    assert upstream_failure_records
+    assert upstream_failure_records[-1].__dict__.get("status_code") == 404

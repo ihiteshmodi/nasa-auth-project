@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
+import logging
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.infrastructure.db import Base
@@ -39,7 +40,7 @@ class FakeNasaService:
         }
 
 
-def _seed_users(session) -> None:
+def _seed_users(session: Session) -> None:
     session.add(
         AuthUser(
             username="basic_user",
@@ -57,15 +58,15 @@ def _seed_users(session) -> None:
     session.commit()
 
 
-def _build_test_app() -> tuple[TestClient, object]:
+def _build_test_app() -> tuple[TestClient, Session]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
     Base.metadata.create_all(bind=engine)
-    Session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    session = Session()
+    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    session: Session = session_factory()
     _seed_users(session)
 
     def override_db_session():
@@ -88,25 +89,31 @@ def _login(client: TestClient, username: str, password: str) -> str:
     return response.json()["access_token"]
 
 
-def test_login_rejects_invalid_credentials() -> None:
+def test_login_rejects_invalid_credentials(caplog) -> None:
     client, session = _build_test_app()
     try:
-        response = client.post("/api/v1/auth/login", json={"username": "basic_user", "password": "wrong"})
+        with caplog.at_level(logging.INFO):
+            response = client.post("/api/v1/auth/login", json={"username": "basic_user", "password": "wrong"})
     finally:
         session.close()
         client.close()
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Invalid credentials"}
+    auth_failed_records = [record for record in caplog.records if record.msg == "auth_failed"]
+    assert auth_failed_records
+    assert auth_failed_records[-1].__dict__.get("username") == "basic_user"
+    assert auth_failed_records[-1].__dict__.get("reason") == "password_mismatch"
 
 
-def test_token_login_accepts_oauth2_form_data() -> None:
+def test_token_login_accepts_oauth2_form_data(caplog) -> None:
     client, session = _build_test_app()
     try:
-        response = client.post(
-            "/api/v1/auth/token",
-            data={"username": "basic_user", "password": "basic_password"},
-        )
+        with caplog.at_level(logging.INFO):
+            response = client.post(
+                "/api/v1/auth/token",
+                data={"username": "basic_user", "password": "basic_password"},
+            )
     finally:
         session.close()
         client.close()
@@ -114,6 +121,11 @@ def test_token_login_accepts_oauth2_form_data() -> None:
     assert response.status_code == 200
     assert response.json()["token_type"] == "bearer"
     assert isinstance(response.json()["access_token"], str)
+    auth_success_records = [record for record in caplog.records if record.msg == "auth_success"]
+    assert auth_success_records
+    assert auth_success_records[-1].__dict__.get("username") == "basic_user"
+    assert auth_success_records[-1].__dict__.get("scope") == "basic"
+    assert all("basic_password" not in record.getMessage() for record in caplog.records)
 
 
 def test_token_login_rejects_invalid_form_credentials() -> None:

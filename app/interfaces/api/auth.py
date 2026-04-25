@@ -1,4 +1,5 @@
 from typing import Annotated
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -12,6 +13,7 @@ from app.interfaces.schemas.user import LoginRequest
 from app.models.user import AuthUser
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _scope_for_username(username: str, request: Request) -> str:
@@ -38,6 +40,7 @@ def _authenticate_and_issue_token(
 	)
 
 	if user is None:
+		logger.info("auth_failed", extra={"username": username, "reason": "user_not_found"})
 		raise invalid_credentials_error
 
 	if not verify_password(
@@ -45,9 +48,11 @@ def _authenticate_and_issue_token(
 		password_hash=user.password_hash,
 		salt=request.app.state.settings.auth_password_salt,
 	):
+		logger.info("auth_failed", extra={"username": username, "reason": "password_mismatch"})
 		raise invalid_credentials_error
 
 	scope = _scope_for_username(username=user.username, request=request)
+	logger.info("auth_success", extra={"username": user.username, "scope": scope})
 	token = create_access_token(subject=user.username, scope=scope, settings=request.app.state.settings)
 	return TokenResponse(access_token=token)
 
