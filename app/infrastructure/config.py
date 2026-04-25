@@ -15,6 +15,18 @@ class Settings(BaseModel):
 	log_level: str = Field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 	log_json: bool = Field(default_factory=lambda: os.getenv("LOG_JSON", "true").lower() in {"1", "true", "yes", "on"})
 	log_service_name: str = Field(default_factory=lambda: os.getenv("LOG_SERVICE_NAME", "nasa-auth-project"))
+	opentelemetry_tracing_enabled: bool = Field(
+		default_factory=lambda: os.getenv("OPENTELEMETRY_TRACING", "false").lower() in {"1", "true", "yes", "on"}
+	)
+	opentelemetry_service_name: str = Field(
+		default_factory=lambda: os.getenv("OPENTELEMETRY_SERVICE_NAME", "nasa-auth-project")
+	)
+	opentelemetry_otlp_endpoint: str = Field(
+		default_factory=lambda: os.getenv("OPENTELEMETRY_OTLP_ENDPOINT", "http://localhost:4317")
+	)
+	opentelemetry_otlp_insecure: bool = Field(
+		default_factory=lambda: os.getenv("OPENTELEMETRY_OTLP_INSECURE", "true").lower() in {"1", "true", "yes", "on"}
+	)
 	http_timeout_seconds: float = Field(default=10.0)
 	http_retry_attempts: int = 3
 	http_retry_backoff_seconds: float = 0.2

@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from app.infrastructure.config import settings
 from app.infrastructure.db import SessionLocal
 from app.infrastructure.logging import clear_request_id, configure_logging, set_request_id
+from app.infrastructure.telemetry import configure_telemetry
 from app.interfaces.api.auth import router as auth_router
 from app.interfaces.api.nasa import router as nasa_router
 
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
 		version="0.1.0",
 		lifespan=lifespan,
 	)
+	configure_telemetry(app, settings)
 
 	@app.middleware("http")
 	async def log_request_lifecycle(request: Request, call_next):
