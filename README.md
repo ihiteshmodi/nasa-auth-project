@@ -28,3 +28,18 @@ OPENTELEMETRY_OTLP_ENDPOINT=http://localhost:4317
 OPENTELEMETRY_OTLP_INSECURE=true
 
 When OPENTELEMETRY_TRACING=false (default), no tracing instrumentation/exporter is initialized.
+
+## Testing Policy
+
+We follow a practical test pyramid.
+
+- Unit tests: primary investment for business logic and edge cases.
+- Integration tests: verify endpoint behavior and component collaboration.
+- E2E tests: keep a small smoke flow for critical user journeys.
+
+Quality gates we enforce in this repo:
+
+- For every non-trivial function, add at least one unit test.
+- For every feature flag, add at least two tests: flag OFF and flag ON.
+- Maintain one small E2E smoke pattern (health, auth, protected endpoint).
+- Prefer meaningful coverage of critical paths over maximizing raw coverage percentage.

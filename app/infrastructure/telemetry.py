@@ -41,13 +41,13 @@ def configure_telemetry(app: FastAPI, settings: TelemetrySettings) -> bool:
         logger.info("telemetry_disabled")
         return False
 
+    if getattr(app.state, "opentelemetry_configured", False):
+        return True
+
     components = _load_opentelemetry_components()
     if components is None:
         logger.warning("telemetry_unavailable", extra={"reason": "missing_opentelemetry_packages"})
         return False
-
-    if getattr(app.state, "opentelemetry_configured", False):
-        return True
 
     resource = components["Resource"].create(
         {
