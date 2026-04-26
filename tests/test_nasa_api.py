@@ -17,8 +17,12 @@ class FakeNasaService(NasaService):
     async def fetch_eonet_events(self, api_key: str | None = None) -> dict[str, list[dict[str, str]]]:
         return {"events": [{"id": "EONET_1"}]}
 
-    async def fetch_insight_weather(self, api_key: str | None = None) -> dict[str, list[str]]:
-        return {"sol_keys": ["1000"]}
+    async def fetch_insight_weather(self, api_key: str | None = None) -> dict[str, object]:
+        return {
+            "data": {"sol_keys": ["1000"]},
+            "cached": True,
+            "cache_date": "2026-04-24",
+        }
 
     async def fetch_asteroids_feed(self, api_key: str | None = None) -> dict[str, object]:
         return {
@@ -57,7 +61,6 @@ def test_nasa_endpoints_return_nocache_payloads() -> None:
     with TestClient(app) as client:
         donki_response = client.get("/api/v1/nasa/donki/notifications", params={"api_key": "DEMO_KEY"})
         eonet_response = client.get("/api/v1/nasa/eonet/events", params={"api_key": "DEMO_KEY"})
-        insight_response = client.get("/api/v1/nasa/insight/weather", params={"api_key": "DEMO_KEY"})
 
     assert donki_response.status_code == 200
     assert donki_response.headers["Cache-Control"] == "no-store"
@@ -79,17 +82,6 @@ def test_nasa_endpoints_return_nocache_payloads() -> None:
         "data": {"events": [{"id": "EONET_1"}]},
     }
 
-    assert insight_response.status_code == 200
-    assert insight_response.headers["Cache-Control"] == "no-store"
-    assert insight_response.headers["X-Cache-Status"] == "BYPASS"
-    assert insight_response.headers["X-Data-Source"] == "upstream"
-    assert insight_response.json() == {
-        "source": "INSIGHT",
-        "nocache": True,
-        "data": {"sol_keys": ["1000"]},
-    }
-
-
 def test_nasa_cached_endpoints_return_cached_metadata() -> None:
     app = create_app()
     app.dependency_overrides[get_nasa_service] = lambda: FakeNasaService()
@@ -97,6 +89,7 @@ def test_nasa_cached_endpoints_return_cached_metadata() -> None:
 
     with TestClient(app) as client:
         asteroids_response = client.get("/api/v1/nasa/asteroids/feed", params={"api_key": "DEMO_KEY"})
+        insight_response = client.get("/api/v1/nasa/insight/weather", params={"api_key": "DEMO_KEY"})
         epic_response = client.get("/api/v1/nasa/epic/natural", params={"api_key": "DEMO_KEY"})
 
     assert asteroids_response.status_code == 200
@@ -109,6 +102,18 @@ def test_nasa_cached_endpoints_return_cached_metadata() -> None:
         "cached": True,
         "cache_date": "2026-04-24",
         "data": {"near_earth_objects": {}},
+    }
+
+    assert insight_response.status_code == 200
+    assert insight_response.headers["X-Cache-Status"] == "HIT"
+    assert insight_response.headers["X-Data-Source"] == "cache"
+    assert insight_response.headers["X-Cache-Date"] == "2026-04-24"
+    assert insight_response.json() == {
+        "source": "INSIGHT",
+        "nocache": False,
+        "cached": True,
+        "cache_date": "2026-04-24",
+        "data": {"sol_keys": ["1000"]},
     }
 
     assert epic_response.status_code == 200

@@ -48,6 +48,7 @@ async def test_nasa_service_forwards_all_calls() -> None:
 
     assert donki == [{"kind": "donki"}]
     assert eonet == {"events": [{"id": "EONET_1"}]}
-    assert insight == {"sol_keys": ["1000"]}
+    assert insight["data"] == {"sol_keys": ["1000"]}
+    assert insight["cached"] is False
     assert asteroids["data"] == {"near_earth_objects": {}}
     assert epic["data"] == [{"identifier": "epic-id"}]

@@ -12,6 +12,13 @@ class CountingClient:
     def __init__(self) -> None:
         self.asteroids_calls = 0
         self.epic_calls = 0
+        self.weather_calls = 0
+
+    async def get_donki_notifications(self, api_key: str | None = None) -> list[dict[str, str]]:
+        return [{"kind": "unused"}]
+
+    async def get_eonet_events(self, api_key: str | None = None) -> dict[str, list[dict[str, str]]]:
+        return {"events": [{"id": "unused"}]}
 
     async def get_asteroids_feed(self, api_key: str | None = None) -> dict[str, dict]:
         self.asteroids_calls += 1
@@ -20,6 +27,10 @@ class CountingClient:
     async def get_epic_images(self, api_key: str | None = None) -> list[dict[str, int]]:
         self.epic_calls += 1
         return [{"sequence": self.epic_calls}]
+
+    async def get_insight_weather(self, api_key: str | None = None) -> dict[str, list[str]]:
+        self.weather_calls += 1
+        return {"sol_keys": [str(self.weather_calls)]}
 
 
 def _build_session():
@@ -65,3 +76,19 @@ async def test_daily_cache_refreshes_when_day_changes() -> None:
     assert day1["cache_date"] == "2026-04-24"
     assert day2["cache_date"] == "2026-04-25"
     assert client.epic_calls == 2
+
+
+@pytest.mark.anyio
+async def test_weather_daily_cache_hits_once_per_day() -> None:
+    session = _build_session()
+    client = CountingClient()
+    service = NasaService(client=client, db_session=session, today_provider=lambda: date(2026, 4, 24))
+
+    first = await service.fetch_insight_weather(api_key="k")
+    second = await service.fetch_insight_weather(api_key="k")
+
+    assert first["cached"] is False
+    assert second["cached"] is True
+    assert first["data"] == {"sol_keys": ["1"]}
+    assert second["data"] == {"sol_keys": ["1"]}
+    assert client.weather_calls == 1

@@ -22,8 +22,12 @@ class FakeNasaService:
     async def fetch_eonet_events(self, api_key: str | None = None) -> dict[str, list[dict[str, str]]]:
         return {"events": [{"id": "EONET_1"}]}
 
-    async def fetch_insight_weather(self, api_key: str | None = None) -> dict[str, list[str]]:
-        return {"sol_keys": ["1000"]}
+    async def fetch_insight_weather(self, api_key: str | None = None) -> dict[str, object]:
+        return {
+            "data": {"sol_keys": ["1000"]},
+            "cached": True,
+            "cache_date": "2026-04-24",
+        }
 
     async def fetch_asteroids_feed(self, api_key: str | None = None) -> dict[str, object]:
         return {
@@ -158,6 +162,24 @@ def test_basic_user_can_access_cached_api() -> None:
 
     assert response.status_code == 200
     assert response.json()["source"] == "ASTEROIDS_NEO_WS"
+
+
+def test_basic_user_can_access_cached_weather_api() -> None:
+    client, session = _build_test_app()
+    try:
+        token = _login(client, "basic_user", "basic_password")
+        response = client.get(
+            "/api/v1/nasa/insight/weather",
+            params={"api_key": "DEMO_KEY"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    finally:
+        session.close()
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "INSIGHT"
+    assert response.json()["cached"] is True
 
 
 def test_basic_user_is_forbidden_for_nocache_api() -> None:

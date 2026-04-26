@@ -40,51 +40,61 @@ class NasaService:
 		return await self._client.get_eonet_events(api_key=api_key)
 
 	async def fetch_insight_weather(self, api_key: str | None = None) -> dict[str, Any]:
-		return await self._client.get_insight_weather(api_key=api_key)
+		data, cached, cache_date = await self._fetch_with_daily_cache(
+			endpoint="insight_weather",
+			fetcher=lambda: self._client.get_insight_weather(api_key=api_key),
+		)
+		return {"data": data, "cached": cached, "cache_date": cache_date.isoformat()}
 
 	async def fetch_asteroids_feed(self, api_key: str | None = None) -> dict[str, Any]:
-		data, cached, cache_date = await self._get_or_set_daily_cache(
+		data, cached, cache_date = await self._fetch_with_daily_cache(
 			endpoint="asteroids_neows",
 			fetcher=lambda: self._client.get_asteroids_feed(api_key=api_key),
 		)
 		return {"data": data, "cached": cached, "cache_date": cache_date.isoformat()}
 
 	async def fetch_epic_images(self, api_key: str | None = None) -> dict[str, Any]:
-		data, cached, cache_date = await self._get_or_set_daily_cache(
+		data, cached, cache_date = await self._fetch_with_daily_cache(
 			endpoint="epic_natural",
 			fetcher=lambda: self._client.get_epic_images(api_key=api_key),
 		)
 		return {"data": data, "cached": cached, "cache_date": cache_date.isoformat()}
 
-	async def _get_or_set_daily_cache(
+	async def _fetch_with_daily_cache(
 		self,
 		endpoint: str,
 		fetcher: Callable[[], Awaitable[Any]],
 	) -> tuple[Any, bool, date]:
 		today = self._today_provider()
-		existing = self._db_session.execute(
-			select(DailyApiCache).where(
-				DailyApiCache.endpoint == endpoint,
-				DailyApiCache.cache_date == today,
-			)
-		).scalar_one_or_none()
+		existing = self._get_daily_cache(endpoint=endpoint, cache_date=today)
 		if existing is not None:
 			return existing.payload, True, today
 
 		payload = await fetcher()
-		self._db_session.add(DailyApiCache(endpoint=endpoint, cache_date=today, payload=payload))
+		persisted_payload, cached = self._store_daily_cache(
+			endpoint=endpoint,
+			cache_date=today,
+			payload=payload,
+		)
+		return persisted_payload, cached, today
+
+	def _get_daily_cache(self, endpoint: str, cache_date: date) -> DailyApiCache | None:
+		return self._db_session.execute(
+			select(DailyApiCache).where(
+				DailyApiCache.endpoint == endpoint,
+				DailyApiCache.cache_date == cache_date,
+			)
+		).scalar_one_or_none()
+
+	def _store_daily_cache(self, endpoint: str, cache_date: date, payload: Any) -> tuple[Any, bool]:
+		self._db_session.add(DailyApiCache(endpoint=endpoint, cache_date=cache_date, payload=payload))
 		try:
 			self._db_session.commit()
 		except IntegrityError:
 			self._db_session.rollback()
-			existing_after_race = self._db_session.execute(
-				select(DailyApiCache).where(
-					DailyApiCache.endpoint == endpoint,
-					DailyApiCache.cache_date == today,
-				)
-			).scalar_one_or_none()
+			existing_after_race = self._get_daily_cache(endpoint=endpoint, cache_date=cache_date)
 			if existing_after_race is not None:
-				return existing_after_race.payload, True, today
+				return existing_after_race.payload, True
 			raise
 
-		return payload, False, today
+		return payload, False

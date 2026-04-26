@@ -179,10 +179,10 @@ Non-cached (premium only):
 
 - GET `/api/v1/nasa/donki/notifications`
 - GET `/api/v1/nasa/eonet/events`
-- GET `/api/v1/nasa/insight/weather`
 
 Cached daily (basic and premium):
 
+- GET `/api/v1/nasa/insight/weather`
 - GET `/api/v1/nasa/asteroids/feed`
 - GET `/api/v1/nasa/epic/natural`
 

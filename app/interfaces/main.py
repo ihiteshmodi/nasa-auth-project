@@ -82,7 +82,7 @@ def create_app() -> FastAPI:
 		return response
 
 	@app.get("/health", tags=["health"])
-	async def health() -> dict[str, str]:
+	def health() -> dict[str, str]:
 		return {"status": "ok"}
 
 	app.include_router(nasa_router)

@@ -70,23 +70,35 @@ async def get_eonet_events(
 	return NasaObjectResponse(source="EONET", data=payload)
 
 
-@router.get("/insight/weather", response_model=NasaObjectResponse)
+@router.get("/insight/weather", response_model=NasaCachedObjectResponse)
 async def get_insight_weather(
 	request: Request,
 	response: Response,
-	_current_user: Annotated[UserPrincipal, Depends(require_premium_user)],
+	_current_user: Annotated[UserPrincipal, Depends(require_cached_api_user)],
 	service: Annotated[NasaService, Depends(get_nasa_service)],
 	api_key: str | None = Query(
 		default=None,
 		detail="query param 'api_key' is required.",
 	),
-) -> NasaObjectResponse:
+) -> NasaCachedObjectResponse:
 	response.headers["Cache-Control"] = "no-store"
-	_set_cache_headers(response, status_value="BYPASS", source_value="upstream")
 	payload = await service.fetch_insight_weather(
 		api_key=_resolve_api_key_for_request(request=request, api_key=api_key)
 	)
-	return NasaObjectResponse(source="INSIGHT", data=payload)
+	cache_status = "HIT" if payload["cached"] else "MISS"
+	data_source = "cache" if payload["cached"] else "upstream"
+	_set_cache_headers(
+		response,
+		status_value=cache_status,
+		source_value=data_source,
+		cache_date=payload["cache_date"],
+	)
+	return NasaCachedObjectResponse(
+		source="INSIGHT",
+		cached=payload["cached"],
+		cache_date=payload["cache_date"],
+		data=payload["data"],
+	)
 
 
 @router.get("/asteroids/feed", response_model=NasaCachedObjectResponse)
